@@ -84,8 +84,10 @@ impl Default for Config {
 }
 
 fn config_path() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("ClockOR");
+    let mut path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
     path.push("config.toml");
     path
 }
@@ -160,6 +162,7 @@ impl Config {
     }
 
     pub fn load_from(path: &std::path::Path) -> Self {
+        let file_exists = path.exists();
         let mut config = if let Ok(content) = fs::read_to_string(path) {
             toml::from_str(&content).unwrap_or_default()
         } else {
@@ -167,6 +170,9 @@ impl Config {
         };
         config.opacity = config.opacity.clamp(25, 100);
         config.font_size = config.font_size.clamp(10, 60);
+        if !file_exists {
+            let _ = config.save_to(path);
+        }
         config
     }
 

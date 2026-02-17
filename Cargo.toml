@@ -1,6 +1,6 @@
 [package]
 name = "clockor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Fullscreen game clock overlay for Windows"
 authors = ["imonoonoko"]
@@ -12,7 +12,6 @@ categories = ["gui"]
 
 [dependencies]
 chrono = "0.4"
-dirs = "5"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 eframe = "0.29"

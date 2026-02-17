@@ -62,11 +62,13 @@ cargo build --release
 
 ### 設定ファイル
 
-設定は以下の場所に保存されます:
+設定は `clockor.exe` と同じディレクトリに保存されます:
 
 ```
-%APPDATA%\ClockOR\config.toml
+config.toml
 ```
+
+初回起動時にデフォルト設定で自動生成されます。
 
 ## ホットキー
 
