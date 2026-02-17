@@ -357,6 +357,23 @@ mod tests {
         assert_eq!(s.len(), 11);
         assert!(s.ends_with("AM") || s.ends_with("PM"));
     }
+
+    // --- guard_color_key ---
+
+    #[test]
+    fn guard_color_key_passes_normal_colors() {
+        assert_eq!(guard_color_key(0x00FFFFFF), 0x00FFFFFF); // white
+        assert_eq!(guard_color_key(0x00000000), 0x00000000); // black
+        assert_eq!(guard_color_key(0x000000FF), 0x000000FF); // red
+    }
+
+    #[test]
+    fn guard_color_key_nudges_matching_color() {
+        // COLOR_KEY = 0x00010001, should be nudged
+        assert_ne!(guard_color_key(0x00010001), 0x00010001);
+        // Result should differ only slightly
+        assert_eq!(guard_color_key(0x00010001), 0x00000001);
+    }
 }
 
 impl Overlay {

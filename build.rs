@@ -144,6 +144,9 @@ fn write_ico(path: &std::path::Path, sizes: &[u32]) -> std::io::Result<()> {
 }
 
 fn main() {
+    // Only re-run when build.rs itself changes
+    println!("cargo:rerun-if-changed=build.rs");
+
     // Only run resource embedding on Windows
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "windows" {
         return;

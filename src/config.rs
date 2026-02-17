@@ -62,18 +62,8 @@ pub struct Config {
     pub hotkey: String,
     pub start_with_windows: bool,
     pub text_style: TextStyle,
-    #[serde(default = "default_text_color")]
     pub text_color: [u8; 3],
-    #[serde(default = "default_outline_color")]
     pub outline_color: [u8; 3],
-}
-
-fn default_text_color() -> [u8; 3] {
-    [255, 255, 255]
-}
-
-fn default_outline_color() -> [u8; 3] {
-    [0, 0, 0]
 }
 
 impl Default for Config {
@@ -87,8 +77,8 @@ impl Default for Config {
             hotkey: "Ctrl+F12".to_string(),
             start_with_windows: false,
             text_style: TextStyle::default(),
-            text_color: default_text_color(),
-            outline_color: default_outline_color(),
+            text_color: [255, 255, 255],
+            outline_color: [0, 0, 0],
         }
     }
 }

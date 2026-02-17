@@ -7,6 +7,7 @@ struct SettingsApp {
     saved_config: Config,
     selected_mod: usize,
     selected_key: usize,
+    applied: bool,
 }
 
 impl SettingsApp {
@@ -17,6 +18,7 @@ impl SettingsApp {
             config,
             selected_mod: mod_idx,
             selected_key: key_idx,
+            applied: false,
         }
     }
 
@@ -208,6 +210,7 @@ impl eframe::App for SettingsApp {
                     crate::apply_autostart(&self.config);
                     crate::request_hotkey_reregister();
                     self.saved_config = self.config.clone();
+                    self.applied = true;
                 }
                 if ui.button("Reset to Defaults").clicked() {
                     self.config = Config::default();
@@ -215,8 +218,9 @@ impl eframe::App for SettingsApp {
                         Self::find_hotkey_indices(&self.config.hotkey);
                     self.selected_mod = mod_idx;
                     self.selected_key = key_idx;
+                    self.applied = false;
                 }
-                if !self.has_unsaved_changes() {
+                if self.applied && !self.has_unsaved_changes() {
                     ui.label("Settings saved!");
                 }
             });
