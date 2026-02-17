@@ -72,7 +72,8 @@ impl eframe::App for SettingsApp {
 
             // Position
             ui.horizontal(|ui| {
-                ui.label("Position:").on_hover_text("画面のどの角に時計を表示するか");
+                ui.label("Position:")
+                    .on_hover_text("画面のどの角に時計を表示するか");
                 ui.radio_value(&mut self.config.position, Position::TopLeft, "Top-Left");
                 ui.radio_value(&mut self.config.position, Position::TopRight, "Top-Right");
                 ui.radio_value(
@@ -109,7 +110,8 @@ impl eframe::App for SettingsApp {
 
             // Font size
             ui.horizontal(|ui| {
-                ui.label("Font Size:").on_hover_text("時計テキストのピクセル高さ");
+                ui.label("Font Size:")
+                    .on_hover_text("時計テキストのピクセル高さ");
                 let mut font_size_f = self.config.font_size as f32;
                 ui.add(
                     egui::Slider::new(&mut font_size_f, 10.0..=60.0)
@@ -171,7 +173,8 @@ impl eframe::App for SettingsApp {
 
             // Hotkey
             ui.horizontal(|ui| {
-                ui.label("Hotkey:").on_hover_text("時計の表示/非表示を切り替えるキー");
+                ui.label("Hotkey:")
+                    .on_hover_text("時計の表示/非表示を切り替えるキー");
 
                 let current_mod = MODIFIER_OPTIONS[self.selected_mod].0;
                 egui::ComboBox::from_id_salt("modifier")
@@ -214,8 +217,7 @@ impl eframe::App for SettingsApp {
                 }
                 if ui.button("Reset to Defaults").clicked() {
                     self.config = Config::default();
-                    let (mod_idx, key_idx) =
-                        Self::find_hotkey_indices(&self.config.hotkey);
+                    let (mod_idx, key_idx) = Self::find_hotkey_indices(&self.config.hotkey);
                     self.selected_mod = mod_idx;
                     self.selected_key = key_idx;
                     self.applied = false;

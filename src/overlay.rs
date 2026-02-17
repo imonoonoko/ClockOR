@@ -174,9 +174,14 @@ unsafe extern "system" fn wnd_proc(
                 TextStyle::Outline => {
                     SetTextColor(hdc, COLORREF(outline_cr));
                     for &(dx, dy) in &[
-                        (-1i32, -1i32), (0, -1), (1, -1),
-                        (-1, 0),                  (1, 0),
-                        (-1, 1),  (0, 1),  (1, 1),
+                        (-1i32, -1i32),
+                        (0, -1),
+                        (1, -1),
+                        (-1, 0),
+                        (1, 0),
+                        (-1, 1),
+                        (0, 1),
+                        (1, 1),
                     ] {
                         let _ = TextOutW(hdc, tx + dx, ty + dy, &wide);
                     }

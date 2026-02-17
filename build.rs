@@ -91,7 +91,11 @@ fn write_ico(path: &std::path::Path, sizes: &[u32]) -> std::io::Result<()> {
 
     // Write directory entries
     for img in &images {
-        let w = if img.width >= 256 { 0u8 } else { img.width as u8 };
+        let w = if img.width >= 256 {
+            0u8
+        } else {
+            img.width as u8
+        };
         let h = w;
         file.write_all(&[w, h, 0, 0])?; // width, height, palette, reserved
         file.write_all(&1u16.to_le_bytes())?; // planes
