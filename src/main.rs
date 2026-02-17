@@ -10,10 +10,11 @@ use overlay::Overlay;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use muda::{Menu, MenuEvent, MenuItem};
-#[allow(unused_imports)]
-use tray_icon::{Icon, TrayIconBuilder};
+use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
-use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{HWND, ERROR_ALREADY_EXISTS};
+use windows::Win32::System::Threading::CreateMutexW;
+use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS,
 };
@@ -61,12 +62,14 @@ fn show_hotkey_error(hotkey: &str) {
     }
 }
 
-fn create_default_icon() -> Icon {
-    let size = 16u32;
+/// Generate RGBA pixel data for the app icon at the given size.
+/// Blue circle with white clock hands.
+pub fn generate_icon_rgba(size: u32) -> Vec<u8> {
     let mut rgba = vec![0u8; (size * size * 4) as usize];
     let center = (size / 2) as f32;
     let radius = center - 1.0;
 
+    // Blue circle
     for y in 0..size {
         for x in 0..size {
             let idx = ((y * size + x) * 4) as usize;
@@ -82,25 +85,41 @@ fn create_default_icon() -> Icon {
             }
         }
     }
-    for dy in 0..4 {
-        let y = (center as u32) - dy;
+
+    // Hour hand (vertical, pointing up)
+    let hand_len = (radius * 0.5) as u32;
+    for dy in 0..hand_len {
+        let y = (center as u32).saturating_sub(dy);
         let x = center as u32;
-        let idx = ((y * size + x) * 4) as usize;
-        rgba[idx] = 255;
-        rgba[idx + 1] = 255;
-        rgba[idx + 2] = 255;
-        rgba[idx + 3] = 255;
-    }
-    for dx in 0..5 {
-        let y = center as u32;
-        let x = (center as u32) + dx;
-        let idx = ((y * size + x) * 4) as usize;
-        rgba[idx] = 255;
-        rgba[idx + 1] = 255;
-        rgba[idx + 2] = 255;
-        rgba[idx + 3] = 255;
+        if y < size && x < size {
+            let idx = ((y * size + x) * 4) as usize;
+            rgba[idx] = 255;
+            rgba[idx + 1] = 255;
+            rgba[idx + 2] = 255;
+            rgba[idx + 3] = 255;
+        }
     }
 
+    // Minute hand (horizontal, pointing right)
+    let hand_len = (radius * 0.7) as u32;
+    for dx in 0..hand_len {
+        let y = center as u32;
+        let x = (center as u32) + dx;
+        if y < size && x < size {
+            let idx = ((y * size + x) * 4) as usize;
+            rgba[idx] = 255;
+            rgba[idx + 1] = 255;
+            rgba[idx + 2] = 255;
+            rgba[idx + 3] = 255;
+        }
+    }
+
+    rgba
+}
+
+fn create_default_icon() -> Icon {
+    let size = 16u32;
+    let rgba = generate_icon_rgba(size);
     Icon::from_rgba(rgba, size, size).expect("Failed to create icon")
 }
 
@@ -138,7 +157,48 @@ pub fn apply_autostart(config: &Config) {
     }
 }
 
+fn toggle_overlay(overlay: &Overlay) {
+    let was_visible = OVERLAY_VISIBLE.load(Ordering::Relaxed);
+    if was_visible {
+        overlay.hide();
+        OVERLAY_VISIBLE.store(false, Ordering::Relaxed);
+    } else {
+        let fresh = Config::load();
+        overlay::update_config(&fresh);
+        overlay.show();
+        OVERLAY_VISIBLE.store(true, Ordering::Relaxed);
+    }
+}
+
 fn main() {
+    // High-DPI awareness (ignore failure on older Windows)
+    unsafe {
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+
+    // Single-instance check
+    unsafe {
+        let mutex_name: Vec<u16> = "Global\\ClockOR_SingleInstance"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let _mutex = CreateMutexW(None, false, windows::core::PCWSTR(mutex_name.as_ptr()));
+        if windows::Win32::Foundation::GetLastError() == ERROR_ALREADY_EXISTS {
+            let msg: Vec<u16> = "ClockOR is already running."
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let title: Vec<u16> = "ClockOR".encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = MessageBoxW(
+                HWND::default(),
+                windows::core::PCWSTR(msg.as_ptr()),
+                windows::core::PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONWARNING,
+            );
+            return;
+        }
+    }
+
     let config = Config::load();
 
     // Create overlay (hidden initially)
@@ -180,6 +240,18 @@ fn main() {
             }
         }
 
+        // Drain tray icon events (left-click toggle)
+        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                toggle_overlay(&overlay);
+            }
+        }
+
         // Drain tray menu events
         while let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id == settings_id {
@@ -208,16 +280,7 @@ fn main() {
                 }
 
                 if msg.message == WM_HOTKEY && msg.wParam.0 == HOTKEY_ID as usize {
-                    let was_visible = OVERLAY_VISIBLE.load(Ordering::Relaxed);
-                    if was_visible {
-                        overlay.hide();
-                        OVERLAY_VISIBLE.store(false, Ordering::Relaxed);
-                    } else {
-                        let fresh = Config::load();
-                        overlay::update_config(&fresh);
-                        overlay.show();
-                        OVERLAY_VISIBLE.store(true, Ordering::Relaxed);
-                    }
+                    toggle_overlay(&overlay);
                 }
 
                 let _ = TranslateMessage(&msg);

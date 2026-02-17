@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TRANSPARENT, WS_POPUP,
 };
 
-use crate::config::{Config, Position};
+use crate::config::{Config, Position, TextStyle};
 
 const TIMER_ID: usize = 1;
 const CLASS_NAME: PCWSTR = w!("ClockOR_Overlay");
@@ -26,6 +26,15 @@ const CLASS_NAME: PCWSTR = w!("ClockOR_Overlay");
 const COLOR_KEY: COLORREF = COLORREF(0x00010001);
 
 static OVERLAY_CONFIG: std::sync::OnceLock<Arc<Mutex<Config>>> = std::sync::OnceLock::new();
+
+/// If a COLORREF matches COLOR_KEY (0x00010001), nudge the blue channel to avoid transparency.
+fn guard_color_key(cr: u32) -> u32 {
+    if cr == COLOR_KEY.0 {
+        cr ^ 0x00010000 // flip blue channel bit
+    } else {
+        cr
+    }
+}
 
 pub struct Overlay {
     pub hwnd: HWND,
@@ -69,7 +78,7 @@ fn monitor_rect_for(hwnd: HWND) -> (i32, i32, i32, i32) {
 
 fn calc_window_rect(config: &Config, monitor: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
     let (mon_x, mon_y, mon_w, mon_h) = monitor;
-    let font_px = config.font_size.pixel_size();
+    let font_px = config.font_size as i32;
 
     // Approximate character width: ~0.6 * font height for proportional font
     let char_w = (font_px as f32 * 0.6) as i32;
@@ -80,7 +89,12 @@ fn calc_window_rect(config: &Config, monitor: (i32, i32, i32, i32)) -> (i32, i32
         (false, false) => 8, // "HH:MM AM"
     };
     let text_w = char_w * text_chars;
-    let win_w = text_w + 24;
+    // Extra width for outline/shadow to prevent clipping
+    let style_pad = match config.text_style {
+        TextStyle::Outline | TextStyle::Shadow => 4,
+        TextStyle::None => 0,
+    };
+    let win_w = text_w + 24 + style_pad;
     let win_h = font_px + 16;
     let margin = 10;
 
@@ -127,9 +141,9 @@ unsafe extern "system" fn wnd_proc(
             let _ = FillRect(hdc, &rc, key_brush);
             let _ = DeleteObject(key_brush);
 
-            // Text: white
+            // Create font
             let font = CreateFontW(
-                config.font_size.pixel_size(),
+                config.font_size as i32,
                 0,
                 0,
                 0,
@@ -146,11 +160,40 @@ unsafe extern "system" fn wnd_proc(
             );
             let old_font = SelectObject(hdc, HGDIOBJ(font.0));
             SetBkMode(hdc, TRANSPARENT);
-            SetTextColor(hdc, COLORREF(0x00FFFFFF));
 
             let time_str = format_time(&config);
             let wide: Vec<u16> = time_str.encode_utf16().collect();
-            let _ = TextOutW(hdc, 12, 8, &wide);
+            let tx = 12;
+            let ty = 8;
+
+            // Resolve colors, guarding against COLOR_KEY collision
+            let text_cr = guard_color_key(config.text_colorref());
+            let outline_cr = guard_color_key(config.outline_colorref());
+
+            match config.text_style {
+                TextStyle::Outline => {
+                    SetTextColor(hdc, COLORREF(outline_cr));
+                    for &(dx, dy) in &[
+                        (-1i32, -1i32), (0, -1), (1, -1),
+                        (-1, 0),                  (1, 0),
+                        (-1, 1),  (0, 1),  (1, 1),
+                    ] {
+                        let _ = TextOutW(hdc, tx + dx, ty + dy, &wide);
+                    }
+                    SetTextColor(hdc, COLORREF(text_cr));
+                    let _ = TextOutW(hdc, tx, ty, &wide);
+                }
+                TextStyle::Shadow => {
+                    SetTextColor(hdc, COLORREF(outline_cr));
+                    let _ = TextOutW(hdc, tx + 2, ty + 2, &wide);
+                    SetTextColor(hdc, COLORREF(text_cr));
+                    let _ = TextOutW(hdc, tx, ty, &wide);
+                }
+                TextStyle::None => {
+                    SetTextColor(hdc, COLORREF(text_cr));
+                    let _ = TextOutW(hdc, tx, ty, &wide);
+                }
+            }
 
             SelectObject(hdc, old_font);
             let _ = DeleteObject(font);
@@ -181,7 +224,6 @@ unsafe extern "system" fn wnd_proc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::FontSize;
 
     const PRIMARY: (i32, i32, i32, i32) = (0, 0, 1920, 1080);
     const OFFSET: (i32, i32, i32, i32) = (1920, 0, 2560, 1440);
@@ -243,11 +285,11 @@ mod tests {
     #[test]
     fn larger_font_increases_window() {
         let mut small_cfg = test_config();
-        small_cfg.font_size = FontSize::Small;
+        small_cfg.font_size = 16;
         let (_, _, w_s, h_s) = calc_window_rect(&small_cfg, PRIMARY);
 
         let mut large_cfg = test_config();
-        large_cfg.font_size = FontSize::Large;
+        large_cfg.font_size = 30;
         let (_, _, w_l, h_l) = calc_window_rect(&large_cfg, PRIMARY);
 
         assert!(w_l > w_s);

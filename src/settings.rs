@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::config::{Config, FontSize, Position, KEY_OPTIONS, MODIFIER_OPTIONS};
+use crate::config::{Config, Position, TextStyle, KEY_OPTIONS, MODIFIER_OPTIONS};
 
 struct SettingsApp {
     config: Config,
@@ -64,9 +64,13 @@ impl eframe::App for SettingsApp {
             ui.heading("ClockOR Settings");
             ui.add_space(8.0);
 
+            // === Display Section ===
+            ui.strong("Display");
+            ui.add_space(4.0);
+
             // Position
-            ui.label("Position:");
             ui.horizontal(|ui| {
+                ui.label("Position:").on_hover_text("画面のどの角に時計を表示するか");
                 ui.radio_value(&mut self.config.position, Position::TopLeft, "Top-Left");
                 ui.radio_value(&mut self.config.position, Position::TopRight, "Top-Right");
                 ui.radio_value(
@@ -83,8 +87,8 @@ impl eframe::App for SettingsApp {
             ui.add_space(4.0);
 
             // Format
-            ui.label("Time Format:");
             ui.horizontal(|ui| {
+                ui.label("Time Format:");
                 ui.radio_value(&mut self.config.format_24h, true, "24-hour");
                 ui.radio_value(&mut self.config.format_24h, false, "12-hour");
             });
@@ -92,20 +96,58 @@ impl eframe::App for SettingsApp {
 
             // Seconds
             ui.checkbox(&mut self.config.show_seconds, "Show seconds");
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // === Appearance Section ===
+            ui.strong("Appearance");
             ui.add_space(4.0);
 
             // Font size
-            ui.label("Font Size:");
             ui.horizontal(|ui| {
-                ui.radio_value(&mut self.config.font_size, FontSize::Small, "Small (16px)");
-                ui.radio_value(
-                    &mut self.config.font_size,
-                    FontSize::Medium,
-                    "Medium (22px)",
+                ui.label("Font Size:").on_hover_text("時計テキストのピクセル高さ");
+                let mut font_size_f = self.config.font_size as f32;
+                ui.add(
+                    egui::Slider::new(&mut font_size_f, 10.0..=60.0)
+                        .text("px")
+                        .integer(),
                 );
-                ui.radio_value(&mut self.config.font_size, FontSize::Large, "Large (30px)");
+                self.config.font_size = font_size_f as u32;
             });
             ui.add_space(4.0);
+
+            // Text style
+            ui.horizontal(|ui| {
+                ui.label("Text Style:")
+                    .on_hover_text("None=装飾なし Outline=縁取り Shadow=影");
+                ui.radio_value(&mut self.config.text_style, TextStyle::None, "None");
+                ui.radio_value(&mut self.config.text_style, TextStyle::Outline, "Outline");
+                ui.radio_value(&mut self.config.text_style, TextStyle::Shadow, "Shadow");
+            });
+            ui.add_space(4.0);
+
+            // Text Color
+            ui.horizontal(|ui| {
+                ui.label("Text Color:");
+                ui.color_edit_button_srgb(&mut self.config.text_color);
+            });
+            ui.add_space(4.0);
+
+            // Outline/Shadow Color (only when text_style != None)
+            if self.config.text_style != TextStyle::None {
+                ui.horizontal(|ui| {
+                    let label = match self.config.text_style {
+                        TextStyle::Outline => "Outline Color:",
+                        TextStyle::Shadow => "Shadow Color:",
+                        TextStyle::None => unreachable!(),
+                    };
+                    ui.label(label);
+                    ui.color_edit_button_srgb(&mut self.config.outline_color);
+                });
+                ui.add_space(4.0);
+            }
 
             // Opacity
             let mut opacity_f = self.config.opacity as f32;
@@ -113,13 +155,22 @@ impl eframe::App for SettingsApp {
                 egui::Slider::new(&mut opacity_f, 25.0..=100.0)
                     .text("Opacity %")
                     .integer(),
-            );
+            )
+            .on_hover_text("時計オーバーレイの透明度");
             self.config.opacity = opacity_f as u8;
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // === System Section ===
+            ui.strong("System");
             ui.add_space(4.0);
 
             // Hotkey
-            ui.label("Hotkey:");
             ui.horizontal(|ui| {
+                ui.label("Hotkey:").on_hover_text("時計の表示/非表示を切り替えるキー");
+
                 let current_mod = MODIFIER_OPTIONS[self.selected_mod].0;
                 egui::ComboBox::from_id_salt("modifier")
                     .selected_text(current_mod)
@@ -146,7 +197,7 @@ impl eframe::App for SettingsApp {
             ui.checkbox(&mut self.config.start_with_windows, "Start with Windows");
             ui.add_space(12.0);
 
-            // Apply button + status
+            // Apply + Reset buttons + status
             ui.horizontal(|ui| {
                 if ui.button("Apply").clicked() {
                     self.config.hotkey = self.build_hotkey_string();
@@ -158,6 +209,13 @@ impl eframe::App for SettingsApp {
                     crate::request_hotkey_reregister();
                     self.saved_config = self.config.clone();
                 }
+                if ui.button("Reset to Defaults").clicked() {
+                    self.config = Config::default();
+                    let (mod_idx, key_idx) =
+                        Self::find_hotkey_indices(&self.config.hotkey);
+                    self.selected_mod = mod_idx;
+                    self.selected_key = key_idx;
+                }
                 if !self.has_unsaved_changes() {
                     ui.label("Settings saved!");
                 }
@@ -167,11 +225,20 @@ impl eframe::App for SettingsApp {
 }
 
 pub fn open_settings(config: Config) {
+    // Generate icon for settings window
+    let icon_rgba = crate::generate_icon_rgba(32);
+    let icon_data = egui::IconData {
+        rgba: icon_rgba,
+        width: 32,
+        height: 32,
+    };
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 380.0])
+            .with_inner_size([400.0, 520.0])
             .with_resizable(false)
-            .with_always_on_top(),
+            .with_always_on_top()
+            .with_icon(icon_data),
         ..Default::default()
     };
     let _ = eframe::run_native(
