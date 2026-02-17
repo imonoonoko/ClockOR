@@ -3,6 +3,12 @@ name = "clockor"
 version = "0.1.0"
 edition = "2021"
 description = "Fullscreen game clock overlay for Windows"
+authors = ["imonoonoko"]
+license = "MIT"
+repository = "https://github.com/imonoonoko/ClockOR"
+readme = "README.md"
+keywords = ["clock", "overlay", "gaming", "windows", "tray"]
+categories = ["gui"]
 
 [dependencies]
 chrono = "0.4"

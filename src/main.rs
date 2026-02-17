@@ -33,15 +33,7 @@ pub fn request_hotkey_reregister() {
 
 fn register_hotkey(config: &Config) -> bool {
     let (modifiers, vk) = config.parsed_hotkey();
-    unsafe {
-        RegisterHotKey(
-            HWND::default(),
-            HOTKEY_ID,
-            HOT_KEY_MODIFIERS(modifiers),
-            vk,
-        )
-        .is_ok()
-    }
+    unsafe { RegisterHotKey(HWND::default(), HOTKEY_ID, HOT_KEY_MODIFIERS(modifiers), vk).is_ok() }
 }
 
 fn unregister_hotkey() {
@@ -58,10 +50,7 @@ fn show_hotkey_error(hotkey: &str) {
     .encode_utf16()
     .chain(std::iter::once(0))
     .collect();
-    let title: Vec<u16> = "ClockOR"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let title: Vec<u16> = "ClockOR".encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         let _ = MessageBoxW(
             HWND::default(),
@@ -136,8 +125,7 @@ pub fn apply_autostart(config: &Config) {
         if config.start_with_windows {
             if let Ok(exe_path) = env::current_exe() {
                 let path_str = exe_path.to_string_lossy();
-                let wide: Vec<u16> =
-                    path_str.encode_utf16().chain(std::iter::once(0)).collect();
+                let wide: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
                 let byte_len = wide.len() * std::mem::size_of::<u16>();
                 let bytes = std::slice::from_raw_parts(wide.as_ptr().cast::<u8>(), byte_len);
                 let _ = RegSetValueExW(hkey, &value_name, 0, REG_SZ, Some(bytes));

@@ -8,15 +8,15 @@ use windows::Win32::Graphics::Gdi::{
     CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, FF_SWISS, FW_BOLD, HBRUSH, HGDIOBJ,
     MONITORINFO, MONITOR_DEFAULTTOPRIMARY, OUT_TT_PRECIS, PAINTSTRUCT, TRANSPARENT,
 };
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetForegroundWindow,
     GetSystemMetrics, KillTimer, LoadCursorW, PostQuitMessage, RegisterClassW,
     SetLayeredWindowAttributes, SetTimer, SetWindowPos, ShowWindow, HWND_TOPMOST, IDC_ARROW,
-    LWA_ALPHA, LWA_COLORKEY, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SW_HIDE,
-    SW_SHOWNOACTIVATE, WM_DESTROY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    LWA_ALPHA, LWA_COLORKEY, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE,
+    WM_DESTROY, WM_PAINT, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT, WS_POPUP,
 };
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
 use crate::config::{Config, Position};
 
@@ -57,7 +57,12 @@ fn monitor_rect_for(hwnd: HWND) -> (i32, i32, i32, i32) {
             let rc = info.rcMonitor;
             (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
         } else {
-            (0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN))
+            (
+                0,
+                0,
+                GetSystemMetrics(SM_CXSCREEN),
+                GetSystemMetrics(SM_CYSCREEN),
+            )
         }
     }
 }
@@ -82,7 +87,10 @@ fn calc_window_rect(config: &Config, monitor: (i32, i32, i32, i32)) -> (i32, i32
     let (x, y) = match config.position {
         Position::TopRight => (mon_x + mon_w - win_w - margin, mon_y + margin),
         Position::TopLeft => (mon_x + margin, mon_y + margin),
-        Position::BottomRight => (mon_x + mon_w - win_w - margin, mon_y + mon_h - win_h - margin),
+        Position::BottomRight => (
+            mon_x + mon_w - win_w - margin,
+            mon_y + mon_h - win_h - margin,
+        ),
         Position::BottomLeft => (mon_x + margin, mon_y + mon_h - win_h - margin),
     };
 
@@ -122,9 +130,13 @@ unsafe extern "system" fn wnd_proc(
             // Text: white
             let font = CreateFontW(
                 config.font_size.pixel_size(),
-                0, 0, 0,
+                0,
+                0,
+                0,
                 FW_BOLD.0 as i32,
-                0, 0, 0,
+                0,
+                0,
+                0,
                 DEFAULT_CHARSET.0 as u32,
                 OUT_TT_PRECIS.0 as u32,
                 CLIP_DEFAULT_PRECIS.0 as u32,
@@ -166,6 +178,145 @@ unsafe extern "system" fn wnd_proc(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::FontSize;
+
+    const PRIMARY: (i32, i32, i32, i32) = (0, 0, 1920, 1080);
+    const OFFSET: (i32, i32, i32, i32) = (1920, 0, 2560, 1440);
+
+    fn test_config() -> Config {
+        Config::default()
+    }
+
+    // --- calc_window_rect position tests ---
+
+    #[test]
+    fn top_right_position() {
+        let cfg = test_config(); // default = TopRight
+        let (x, y, w, _h) = calc_window_rect(&cfg, PRIMARY);
+        assert_eq!(x, 1920 - w - 10);
+        assert_eq!(y, 10);
+    }
+
+    #[test]
+    fn top_left_position() {
+        let mut cfg = test_config();
+        cfg.position = Position::TopLeft;
+        let (x, y, _, _) = calc_window_rect(&cfg, PRIMARY);
+        assert_eq!(x, 10);
+        assert_eq!(y, 10);
+    }
+
+    #[test]
+    fn bottom_right_position() {
+        let mut cfg = test_config();
+        cfg.position = Position::BottomRight;
+        let (x, y, w, h) = calc_window_rect(&cfg, PRIMARY);
+        assert_eq!(x, 1920 - w - 10);
+        assert_eq!(y, 1080 - h - 10);
+    }
+
+    #[test]
+    fn bottom_left_position() {
+        let mut cfg = test_config();
+        cfg.position = Position::BottomLeft;
+        let (x, y, _, h) = calc_window_rect(&cfg, PRIMARY);
+        assert_eq!(x, 10);
+        assert_eq!(y, 1080 - h - 10);
+    }
+
+    // --- multi-monitor offset ---
+
+    #[test]
+    fn multi_monitor_offset() {
+        let mut cfg = test_config();
+        cfg.position = Position::TopLeft;
+        let (x, y, _, _) = calc_window_rect(&cfg, OFFSET);
+        assert_eq!(x, 1920 + 10);
+        assert_eq!(y, 10);
+    }
+
+    // --- font size affects window size ---
+
+    #[test]
+    fn larger_font_increases_window() {
+        let mut small_cfg = test_config();
+        small_cfg.font_size = FontSize::Small;
+        let (_, _, w_s, h_s) = calc_window_rect(&small_cfg, PRIMARY);
+
+        let mut large_cfg = test_config();
+        large_cfg.font_size = FontSize::Large;
+        let (_, _, w_l, h_l) = calc_window_rect(&large_cfg, PRIMARY);
+
+        assert!(w_l > w_s);
+        assert!(h_l > h_s);
+    }
+
+    // --- show_seconds affects width ---
+
+    #[test]
+    fn seconds_increases_width() {
+        let mut no_sec = test_config();
+        no_sec.show_seconds = false;
+        let (_, _, w_no, _) = calc_window_rect(&no_sec, PRIMARY);
+
+        let mut with_sec = test_config();
+        with_sec.show_seconds = true;
+        let (_, _, w_yes, _) = calc_window_rect(&with_sec, PRIMARY);
+
+        assert!(w_yes > w_no);
+    }
+
+    // --- format_time structure ---
+
+    #[test]
+    fn format_time_24h_no_seconds() {
+        let mut cfg = test_config();
+        cfg.format_24h = true;
+        cfg.show_seconds = false;
+        let s = format_time(&cfg);
+        // "HH:MM" — 5 chars
+        assert_eq!(s.len(), 5);
+        assert_eq!(&s[2..3], ":");
+    }
+
+    #[test]
+    fn format_time_24h_with_seconds() {
+        let mut cfg = test_config();
+        cfg.format_24h = true;
+        cfg.show_seconds = true;
+        let s = format_time(&cfg);
+        // "HH:MM:SS" — 8 chars
+        assert_eq!(s.len(), 8);
+        assert_eq!(&s[2..3], ":");
+        assert_eq!(&s[5..6], ":");
+    }
+
+    #[test]
+    fn format_time_12h_no_seconds() {
+        let mut cfg = test_config();
+        cfg.format_24h = false;
+        cfg.show_seconds = false;
+        let s = format_time(&cfg);
+        // "HH:MM AM" — 8 chars
+        assert_eq!(s.len(), 8);
+        assert!(s.ends_with("AM") || s.ends_with("PM"));
+    }
+
+    #[test]
+    fn format_time_12h_with_seconds() {
+        let mut cfg = test_config();
+        cfg.format_24h = false;
+        cfg.show_seconds = true;
+        let s = format_time(&cfg);
+        // "HH:MM:SS AM" — 11 chars
+        assert_eq!(s.len(), 11);
+        assert!(s.ends_with("AM") || s.ends_with("PM"));
+    }
+}
+
 impl Overlay {
     pub fn new(config: &Config) -> Self {
         OVERLAY_CONFIG.get_or_init(|| Arc::new(Mutex::new(config.clone())));
@@ -189,18 +340,19 @@ impl Overlay {
             let monitor = monitor_rect_for(HWND::default());
             let (x, y, w, h) = calc_window_rect(config, monitor);
 
-            let ex_style = WS_EX_TOPMOST
-                | WS_EX_TRANSPARENT
-                | WS_EX_LAYERED
-                | WS_EX_TOOLWINDOW;
+            let ex_style = WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_TOOLWINDOW;
 
             let hwnd = CreateWindowExW(
                 ex_style,
                 CLASS_NAME,
                 w!("ClockOR"),
                 WS_POPUP,
-                x, y, w, h,
-                None, None,
+                x,
+                y,
+                w,
+                h,
+                None,
+                None,
                 hinstance_win,
                 None,
             )
@@ -222,7 +374,8 @@ impl Overlay {
             let monitor = monitor_rect_for(GetForegroundWindow());
             let (x, y, w, h) = calc_window_rect(&config, monitor);
             let alpha = (config.opacity as f32 / 100.0 * 255.0) as u8;
-            let _ = SetLayeredWindowAttributes(self.hwnd, COLOR_KEY, alpha, LWA_COLORKEY | LWA_ALPHA);
+            let _ =
+                SetLayeredWindowAttributes(self.hwnd, COLOR_KEY, alpha, LWA_COLORKEY | LWA_ALPHA);
             let _ = SetWindowPos(self.hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
         }

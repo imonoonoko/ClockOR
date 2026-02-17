@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::config::{Config, FontSize, Position, MODIFIER_OPTIONS, KEY_OPTIONS};
+use crate::config::{Config, FontSize, Position, KEY_OPTIONS, MODIFIER_OPTIONS};
 
 struct SettingsApp {
     config: Config,
@@ -69,8 +69,16 @@ impl eframe::App for SettingsApp {
             ui.horizontal(|ui| {
                 ui.radio_value(&mut self.config.position, Position::TopLeft, "Top-Left");
                 ui.radio_value(&mut self.config.position, Position::TopRight, "Top-Right");
-                ui.radio_value(&mut self.config.position, Position::BottomLeft, "Bottom-Left");
-                ui.radio_value(&mut self.config.position, Position::BottomRight, "Bottom-Right");
+                ui.radio_value(
+                    &mut self.config.position,
+                    Position::BottomLeft,
+                    "Bottom-Left",
+                );
+                ui.radio_value(
+                    &mut self.config.position,
+                    Position::BottomRight,
+                    "Bottom-Right",
+                );
             });
             ui.add_space(4.0);
 
@@ -90,7 +98,11 @@ impl eframe::App for SettingsApp {
             ui.label("Font Size:");
             ui.horizontal(|ui| {
                 ui.radio_value(&mut self.config.font_size, FontSize::Small, "Small (16px)");
-                ui.radio_value(&mut self.config.font_size, FontSize::Medium, "Medium (22px)");
+                ui.radio_value(
+                    &mut self.config.font_size,
+                    FontSize::Medium,
+                    "Medium (22px)",
+                );
                 ui.radio_value(&mut self.config.font_size, FontSize::Large, "Large (30px)");
             });
             ui.add_space(4.0);
